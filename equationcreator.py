@@ -13,7 +13,7 @@ ws = wb['Data Collection']
 # Specify the column and the range of rows
 column = 'I'
 start_row = 4
-end_row = 39  # Change this to the number of the last row you want to read
+end_row = 25  # Change this to the number of the last row you want to read
 
 
 
@@ -21,14 +21,14 @@ doc = Document()
 variable_names = {
     1: 'Sector Variable Vague',
     2: 'Sector variable precise',
-    3: 'Sector Variable Size',
-    4: 'Market Variable Vague',
-    5: 'Market variable precise',
-    6: 'Market Variable Size',
-    7: 'Economic Variable Vague',
-    8: 'Economic variable precise',
-    9: 'Economic Variable Size',
-    10: 'This is a fail safe. If you are seeing this message, The code has gone wrong somewhere. Discard the equation and do not use it'
+    #3: 'Sector Variable Size',
+    3: 'Market Variable Vague',
+    4: 'Market variable precise',
+    #6: 'Market Variable Size',
+    #7: 'Economic Variable Vague',
+    #8: 'Economic variable precise',
+    #9: 'Economic Variable Size',
+    5: 'This is a fail safe. If you are seeing this message, The code has gone wrong somewhere. Discard the equation and do not use it'
 }
 
 line_items = [
@@ -51,23 +51,24 @@ line_items = [
     "R&D",
     "SG&A",
     "Interest Expense",
-    "Nonoperating Income",
+    #"Nonoperating Income",
     "Tax Provision",
     "Net Income",
-    "EPS",
-    "Net Income",
-    "Depreciation & Amortization",
-    "Share-based Compensation",
-    "Deferred Tax",
-    "Income From Investments",
-    "Accounts Receivable",
-    "Inventory",
-    "Prepaid Expense",
-    "Accounts Payable",
-    "Purchase of PP&E",
-    "Proceeds from Asset Sales",
-    "Issuance Of Debts",
-    "Payments of Debts"
+    "Operating Cash Flow",
+    #"EPS",
+    #"Net Income",
+    #"Depreciation & Amortization",
+    #"Share-based Compensation",
+    #"Deferred Tax",
+    #"Income From Investments",
+    #"Accounts Receivable",
+    #"Inventory",
+    #"Prepaid Expense",
+    #"Accounts Payable",
+    #"Purchase of PP&E",
+    #"Proceeds from Asset Sales",
+    #"Issuance Of Debts",
+    #"Payments of Debts"
 ]
 
 
@@ -132,8 +133,9 @@ def replace(population, children):
     population[:2] = children
 
 
-
-unprocessed_list = [[ws[f'{column}{row}'].value for column in ['I', 'J', 'L', 'N', 'O', 'Q', 'S', 'T', 'V', 'E']] for row in range(start_row, end_row+1)]
+unprocessed_list = [[ws[f'{column}{row}'].value for column in ['I', 'J', 'M', 'N', 'E']] for row in range(start_row, end_row+1)]
+# Assuming 'F' and 'G' are the columns for straight line % and adjusted straight line %
+columns = ['F', 'G']
 
 # Create list_of_lists where each number is multiplied by 100
 list_of_lists = [[value * 100 if isinstance(value, (int, float)) else value for value in sublist] for sublist in unprocessed_list]
@@ -163,14 +165,14 @@ def standardize_equation(individual):
 # Genetic Algorithm
 def genetic_algorithm(numbers, target, pop_size, generations):
     population = generate_population(numbers, pop_size)
-    zero_fitness_warning_given = False  # Add this line
+    zero_fitness_warning_given = False
     for _ in range(generations):
         fitnesses = [calculate_fitness(individual, target) for individual in population]
-        if sum(fitnesses) == 0:  # If all fitnesses are zero
-            if not zero_fitness_warning_given:  # Only print the message once per sublist
+        if sum(fitnesses) == 0:
+            if not zero_fitness_warning_given:
                 print("All individuals have zero fitness. Skipping...")
-                zero_fitness_warning_given = True  # After printing the message once, don't print it again
-            continue  # Skip to the next iteration
+                zero_fitness_warning_given = True
+            continue
         parents = select(population, fitnesses)
         children = crossover(*parents)
         for child in children:
@@ -180,19 +182,45 @@ def genetic_algorithm(numbers, target, pop_size, generations):
     best_individual = max(population, key=lambda x: calculate_fitness(x, target))
     standardized_best_individual = standardize_equation(best_individual)
 
-    return ''.join(map(str, best_individual)), ''.join(map(str, standardized_best_individual))  # return both equations
+    # Calculate accuracy
+    best_expr = ''.join(map(str, best_individual))
+    try:
+        best_value = eval(best_expr)
+        accuracy = 1 - abs(target - best_value) / abs(target)  # Relative error
+    except ZeroDivisionError:
+        if target == best_value:  # Both are zero
+            accuracy = 1
+        else:  # target is zero but best_value is not
+            accuracy = 0
+
+    return ''.join(map(str, best_individual)), ''.join(map(str, standardized_best_individual)), accuracy
+
 
 
 for line_item, sublist in zip(line_items, list_of_lists):
-    numbers_in_loop = sublist[:-1]  # All elements except the last one
-    target_in_loop = sublist[-1]  # The last element
-    variable_mapping = {numbers_in_loop[i]: i+1 for i in range(len(numbers_in_loop))}  # Update the variable mapping
     print(f"Processing {line_item}...")
     doc.add_paragraph(f"Processing {line_item}...")  # Add the line item to the Word document
-    for _ in range(25): #change this for how many equations you want
-        original, standardized = genetic_algorithm(numbers_in_loop, target_in_loop, pop_size=100, generations=1200) #change the generations to increase accuracy 
-        standardized_equation = ''.join(standardized)  
-        print(standardized_equation)
-        doc.add_paragraph(standardized_equation)  
+
+    for column in columns:
+        # Update unprocessed_list for each column
+        unprocessed_list = [[ws[f'{col}{row}'].value for col in ['I', 'J', 'M', 'N', 'E', column]] for row in range(start_row, end_row+1)]
+        numbers_in_loop = sublist[:-1]  # All elements except the last one
+        target_in_loop = sublist[-1]  # The last element
+        variable_mapping = {numbers_in_loop[i]: i+1 for i in range(len(numbers_in_loop))}  # Update the variable mapping
+
+        if column == 'F':
+            print(f"Using Straightline % for {line_item}...")
+            doc.add_paragraph(f"Using Straightline % for {line_item}...")  # Add the column info to the Word document
+        elif column == 'G':
+            print(f"Using Adj. Straightline for {line_item}...")
+            doc.add_paragraph(f"Using Adj. Straightline for {line_item}...")  # Add the column info to the Word document
+
+        for _ in range(5): #change this for how many equations you want
+            original, standardized, accuracy = genetic_algorithm(numbers_in_loop, target_in_loop, pop_size=100, generations=1200) #change the generations to increase accuracy 
+            standardized_equation = ''.join(standardized)  
+            print(f"{standardized_equation} (Accuracy: {accuracy*100:.2f}%)")
+            doc.add_paragraph(f"{standardized_equation} (Accuracy: {accuracy*100:.2f}%)")
+
 doc.save("equations.docx")
+
 
